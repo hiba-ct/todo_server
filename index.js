@@ -1,3 +1,5 @@
+require('dotenv').config(); // Make sure this is at the top
+
 const express =  require('express')
 const cors = require('cors')
 const app=express();
@@ -94,6 +96,13 @@ if(result){
 })
 })
 
-app.listen(5000,()=>{console.log('server running started');
 
-})
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
+
+ app.get('/', (req, res) => {
+    res.status(200).send('<h1 style="color:red;">Server running successfully starting</h1>');
+});
+  
