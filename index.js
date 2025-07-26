@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
 
-const bcrypt = require('bcrypt');
+
 
 const app = express();
 app.use(express.json());
@@ -12,16 +12,37 @@ app.use(cors());
 
 
 // ✅ MySQL Connection using Railway DB credentials
- const db = mysql.createPool({
+  /* const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT
+});  
+  */
+
+
+
+
+const db = mysql.createConnection({
+  host: 'crossover.proxy.rlwy.net',
+  user: 'root',
+  password: 'rgRoyiUfyYUPMWxWuVehoWYVjpivICkG',
+  database: 'railway',
+  port: 49750
 });
- 
+
+db.connect((err) => {
+  if (err) {
+    console.error('❌ Database connection failed:', err.message);
+  } else {
+    console.log('✅ Connected to Railway MySQL database!');
+  }
+  db.end();
+});
+
 // ✅ Connect to DB
-/* const db = mysql.createConnection({
+  /* const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: 'mysql123@hiba',
@@ -35,7 +56,7 @@ db.connect((err)=>{
         console.log("connected to database failed");
     }
 })
- */
+   */
 
 // ✅ Home route for testing
 app.get('/', (req, res) => {
