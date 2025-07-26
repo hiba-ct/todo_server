@@ -4,21 +4,38 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
 
+const bcrypt = require('bcrypt');
+
 const app = express();
 app.use(express.json());
 app.use(cors());
 
+
 // ✅ MySQL Connection using Railway DB credentials
-const db = mysql.createPool({
+ const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT
 });
-
+ 
 // ✅ Connect to DB
+/* const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: 'mysql123@hiba',
+    database: 'sys'
+});
 
+db.connect((err)=>{
+    if(!err){
+      console.log("connected to database successfully")  
+    }else{
+        console.log("connected to database failed");
+    }
+})
+ */
 
 // ✅ Home route for testing
 app.get('/', (req, res) => {
@@ -106,6 +123,54 @@ app.post('/complete-task', (req, res) => {
     }
   });
 });
+
+
+
+
+
+
+
+
+// ✅ Register route
+// REGISTER
+ app.post('/register', (req, res) => {
+  const { name, email, password } = req.body;
+  const checkQuery = 'SELECT * FROM users WHERE email = ?';
+  db.query(checkQuery, [email], (err, results) => {
+    if (results.length > 0) return res.status(400).send("User already exists");
+
+    const insertQuery = 'INSERT INTO users (name, email, password, createdAt) VALUES (?, ?, ?, ?)';
+    db.query(insertQuery, [name, email, password, new Date()], (err, result) => {
+      if (err) return res.status(500).send("Registration error");
+      res.send("User registered successfully");
+    });
+  });
+});
+
+// LOGIN
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  const q = 'SELECT * FROM users WHERE email = ?';
+  db.query(q, [email], (err, results) => {
+    if (results.length === 0) return res.status(401).send("Invalid email");
+    if (results[0].password !== password) return res.status(401).send("Invalid password");
+
+    res.json({
+      message: "Login successful",
+      user: {
+        id: results[0].id,
+        name: results[0].name,
+        email: results[0].email
+      }
+    });
+  });
+});
+ 
+
+
+
+
+
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
