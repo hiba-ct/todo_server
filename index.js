@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load environment variables
+require('dotenv').config(); // Load environment variables at top
 
 const express = require('express');
 const cors = require('cors');
@@ -6,113 +6,109 @@ const mysql = require('mysql2');
 
 const app = express();
 app.use(express.json());
+app.use(cors());
 
-// ✅ CORS: Allow only your Vercel frontend domain
-app.use(cors({
-  origin: "https://todo-frontend-chi-sepia.vercel.app", // ✅ Replace with your frontend domain
-  methods: ["GET", "POST"],
-  credentials: true
-}));
-
-// ✅ MySQL connection (Railway)
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,     // e.g., caboose.proxy.rlwy.net
-  user: process.env.DB_USER,     // e.g., root
+// ✅ MySQL Connection using Railway DB credentials
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME, // e.g., railway
-  port: process.env.DB_PORT      // e.g., 35791
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT
 });
 
-// ✅ Connect to database
-db.connect((err) => {
-  if (!err) {
-    console.log("✅ Connected to MySQL database.");
-  } else {
-    console.error("❌ DB Connection Error:", err.message);
-  }
-});
+// ✅ Connect to DB
 
-// ✅ Home route (test)
+
+// ✅ Home route for testing
 app.get('/', (req, res) => {
-  res.send("<h1 style='color:green'>🟢 Server is running and connected to MySQL</h1>");
+  res.status(200).send('<h1 style="color:red;">Server running successfully starting</h1>');
 });
 
 // ✅ Read all tasks
 app.get('/read-tasks', (req, res) => {
-  const q = "SELECT * FROM todos";
+  const q = 'SELECT * FROM todos';
   db.query(q, (err, result) => {
     if (err) {
-      console.error("❌ Error fetching tasks:", err.message);
-      return res.status(500).send("Server error");
+      console.log("❌ Failed to read tasks:", err);
+      return res.status(500).send("Error reading tasks");
+    } else {
+      console.log("✅ Tasks fetched");
+      res.json(result);
     }
-    res.json(result);
   });
 });
 
-// ✅ Add a new task
+// ✅ Add new task
 app.post('/new-task', (req, res) => {
-  const { task } = req.body;
-
-  console.log("📦 Task received from frontend:", task);
-
-  if (!task) {
-    return res.status(400).send("Task field is required");
-  }
-
-  const q = "INSERT INTO todos (task, createdAt, status) VALUES (?, ?, ?)";
-  const values = [task, new Date(), "active"];
+  const q = 'INSERT INTO todos (task, createdAt, status) VALUES (?, ?, ?)';
+  const values = [req.body.task, new Date(), 'active'];
 
   db.query(q, values, (err, result) => {
     if (err) {
-      console.error("❌ Failed to insert task:", err.message);
-      return res.status(500).send("Insert failed");
+      console.log("❌ Failed to store task:", err);
+      return res.status(500).send("Task creation failed");
+    } else {
+      console.log("✅ Task saved");
+      db.query('SELECT * FROM todos', (e, newList) => {
+        res.send(newList);
+      });
     }
-    console.log("✅ Task inserted successfully");
-    db.query('SELECT * FROM todos', (e, newList) => res.send(newList));
   });
 });
 
-// ✅ Update a task
+// ✅ Update task
 app.post('/update-task', (req, res) => {
   const { id, task } = req.body;
-  const q = "UPDATE todos SET task = ? WHERE id = ?";
+  const q = 'UPDATE todos SET task = ? WHERE id = ?';
+
   db.query(q, [task, id], (err, result) => {
     if (err) {
-      console.error("❌ Update failed:", err.message);
-      return res.status(500).send("Update error");
+      console.error("❌ Failed to update task:", err);
+      return res.status(500).json({ message: 'Update failed' });
+    } else {
+      console.log("✅ Task updated");
+      res.json({ message: 'Task updated successfully' });
     }
-    res.send("✅ Task updated");
   });
 });
 
-// ✅ Delete a task
+// ✅ Delete task
 app.post('/delete-task', (req, res) => {
-  const { id } = req.body;
-  const q = "DELETE FROM todos WHERE id = ?";
-  db.query(q, [id], (err, result) => {
+  const q = 'DELETE FROM todos WHERE id = ?';
+
+  db.query(q, [req.body.id], (err, result) => {
     if (err) {
-      console.error("❌ Delete failed:", err.message);
-      return res.status(500).send("Delete error");
+      console.log("❌ Failed to delete task:", err);
+      return res.status(500).send("Delete failed");
+    } else {
+      console.log("✅ Task deleted");
+      db.query('SELECT * FROM todos', (e, newList) => {
+        res.send(newList);
+      });
     }
-    db.query('SELECT * FROM todos', (e, newList) => res.send(newList));
   });
 });
 
-// ✅ Mark task as complete
+// ✅ Mark task as completed
 app.post('/complete-task', (req, res) => {
-  const { id } = req.body;
-  const q = "UPDATE todos SET status = ? WHERE id = ?";
-  db.query(q, ["completed", id], (err, result) => {
+  const q = 'UPDATE todos SET status = ? WHERE id = ?';
+
+  db.query(q, ['completed', req.body.id], (err, result) => {
     if (err) {
-      console.error("❌ Completion failed:", err.message);
-      return res.status(500).send("Complete error");
+      console.log("❌ Failed to complete task:", err);
+      return res.status(500).send("Complete failed");
+    } else {
+      console.log("✅ Task marked as completed");
+      db.query('SELECT * FROM todos', (e, newList) => {
+        res.send(newList);
+      });
     }
-    db.query('SELECT * FROM todos', (e, newList) => res.send(newList));
   });
 });
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-});
+  console.log(`✅ Server running on port ${PORT}`);
+}); 
