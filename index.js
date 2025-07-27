@@ -1,185 +1,197 @@
-require('dotenv').config(); // Load environment variables at top
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
-
-
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-
-// ✅ MySQL Connection using Railway DB credentials
-  const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT
-});  
- 
-
-
-
-
-
-
-// ✅ Connect to DB
-  /* const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'mysql123@hiba',
-    database: 'sys'
+// ✅ MySQL Connection
+const db = mysql.createConnection({
+  host: 'localhost',
+  user: 'root',
+  password: 'mysql123@hiba',
+  database: 'sys',
 });
 
-db.connect((err)=>{
-    if(!err){
-      console.log("connected to database successfully")  
-    }else{
-        console.log("connected to database failed");
-    }
-})
-   */
+db.connect((err) => {
+  if (!err) {
+    console.log("✅ Connected to database successfully");
+  } else {
+    console.log("❌ Database connection failed");
+  }
+});
 
-// ✅ Home route for testing
+// ✅ Middleware to verify JWT token
+function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ message: "No token provided" });
+
+  const token = authHeader.split(" ")[1]; // format: "Bearer <token>"
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ message: "Invalid token" });
+    req.user = decoded; // contains { id: user.id }
+    next();
+  });
+}
+
+// ✅ Test route
 app.get('/', (req, res) => {
-  res.status(200).send('<h1 style="color:red;">Server running successfully starting</h1>');
+  res.send('<h1 style="color:red;">Server running successfully</h1>');
 });
 
-// ✅ Read all tasks
-app.get('/read-tasks', (req, res) => {
-  const q = 'SELECT * FROM todos';
-  db.query(q, (err, result) => {
+// ✅ Register
+app.post('/register', async (req, res) => {
+  const { name, email, password } = req.body;
+
+  const checkUser = "SELECT * FROM users WHERE email = ?";
+  db.query(checkUser, [email], async (err, results) => {
+    if (err) return res.status(500).json({ error: err });
+    if (results.length > 0) return res.status(400).json({ message: "User already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const insertUser = `INSERT INTO users (name, email, password, createdAt) VALUES (?, ?, ?, NOW())`;
+
+    db.query(insertUser, [name, email, hashedPassword], (err, result) => {
+      if (err) return res.status(500).json({ error: err });
+
+      const userId = result.insertId;
+      const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+      res.status(201).json({ message: "User registered successfully", token });
+    });
+  });
+});
+
+// ✅ Login
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+
+  const query = "SELECT * FROM users WHERE email = ?";
+  db.query(query, [email], async (err, results) => {
+    if (err) return res.status(500).json({ error: err });
+
+    if (results.length === 0) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const user = results[0];
+    const validPassword = await bcrypt.compare(password, user.password);
+
+    if (!validPassword) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    // ✅ Send both token and user info
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name // optional
+      }
+    });
+  });
+});
+
+
+// ✅ Read tasks for logged-in user
+/* app.get('/read-tasks', verifyToken, (req, res) => {
+  const userId = req.user.id;
+  const q = 'SELECT * FROM todos WHERE user_id = ?';
+
+  db.query(q, [userId], (err, result) => {
     if (err) {
       console.log("❌ Failed to read tasks:", err);
       return res.status(500).send("Error reading tasks");
     } else {
-      console.log("✅ Tasks fetched");
+      res.json(result);
+    }
+  });
+}); */
+
+// ✅ Add task (logged-in user)
+ app.post("/new-task", verifyToken, (req, res) => {
+  const { task, status } = req.body;
+  const user_id = req.user.id;
+  const createdAt = new Date();
+
+  const sql = "INSERT INTO todos (task, createdAt, status, user_id) VALUES (?, ?, ?, ?)";
+  db.query(sql, [task, createdAt, status, user_id], (err, result) => {
+    if (err) {
+      console.error("❌ Insert error:", err);
+      return res.status(500).json({ error: err });
+    }
+    return res.json({ message: "✅ Task added", result });
+  });
+}); 
+
+app.get('/read-tasks/:id', verifyToken, (req, res) => {
+  const requestedId = parseInt(req.params.id);  // from URL like /read-tasks/14
+  const userId = req.user.id;                   // from token
+
+  // ✅ Optional: Secure check to prevent other users from accessing
+  if (requestedId !== userId) {
+    return res.status(403).send("Forbidden: Cannot access another user's tasks");
+  }
+
+  const q = 'SELECT * FROM todos WHERE user_id = ?';
+  db.query(q, [requestedId], (err, result) => {
+    if (err) {
+      console.log("❌ Failed to read tasks:", err);
+      return res.status(500).send("Error reading tasks");
+    } else {
       res.json(result);
     }
   });
 });
 
-// ✅ Add new task
-app.post('/new-task', (req, res) => {
-  const q = 'INSERT INTO todos (task, createdAt, status) VALUES (?, ?, ?)';
-  const values = [req.body.task, new Date(), 'active'];
 
-  db.query(q, values, (err, result) => {
-    if (err) {
-      console.log("❌ Failed to store task:", err);
-      return res.status(500).send("Task creation failed");
-    } else {
-      console.log("✅ Task saved");
-      db.query('SELECT * FROM todos', (e, newList) => {
-        res.send(newList);
-      });
-    }
-  });
-});
-
-// ✅ Update task
-app.post('/update-task', (req, res) => {
+// ✅ Update task (check user ownership)
+app.post('/update-task', verifyToken, (req, res) => {
   const { id, task } = req.body;
-  const q = 'UPDATE todos SET task = ? WHERE id = ?';
+  const user_id = req.user.id;
 
-  db.query(q, [task, id], (err, result) => {
-    if (err) {
-      console.error("❌ Failed to update task:", err);
-      return res.status(500).json({ message: 'Update failed' });
-    } else {
-      console.log("✅ Task updated");
-      res.json({ message: 'Task updated successfully' });
-    }
+  const q = 'UPDATE todos SET task = ? WHERE id = ? AND user_id = ?';
+  db.query(q, [task, id, user_id], (err, result) => {
+    if (err) return res.status(500).json({ message: 'Update failed', error: err });
+    res.json({ message: '✅ Task updated' });
   });
 });
 
-// ✅ Delete task
-app.post('/delete-task', (req, res) => {
-  const q = 'DELETE FROM todos WHERE id = ?';
+// ✅ Delete task (check user ownership)
+app.post('/delete-task', verifyToken, (req, res) => {
+  const { id } = req.body;
+  const user_id = req.user.id;
 
-  db.query(q, [req.body.id], (err, result) => {
-    if (err) {
-      console.log("❌ Failed to delete task:", err);
-      return res.status(500).send("Delete failed");
-    } else {
-      console.log("✅ Task deleted");
-      db.query('SELECT * FROM todos', (e, newList) => {
-        res.send(newList);
-      });
-    }
+  const q = 'DELETE FROM todos WHERE id = ? AND user_id = ?';
+  db.query(q, [id, user_id], (err, result) => {
+    if (err) return res.status(500).send("❌ Delete failed");
+    res.json({ message: '✅ Task deleted' });
   });
 });
 
 // ✅ Mark task as completed
-app.post('/complete-task', (req, res) => {
-  const q = 'UPDATE todos SET status = ? WHERE id = ?';
+app.post('/complete-task', verifyToken, (req, res) => {
+  const { id } = req.body;
+  const user_id = req.user.id;
 
-  db.query(q, ['completed', req.body.id], (err, result) => {
-    if (err) {
-      console.log("❌ Failed to complete task:", err);
-      return res.status(500).send("Complete failed");
-    } else {
-      console.log("✅ Task marked as completed");
-      db.query('SELECT * FROM todos', (e, newList) => {
-        res.send(newList);
-      });
-    }
+  const q = 'UPDATE todos SET status = ? WHERE id = ? AND user_id = ?';
+  db.query(q, ['completed', id, user_id], (err, result) => {
+    if (err) return res.status(500).send("❌ Complete failed");
+    res.json({ message: '✅ Task marked as completed' });
   });
 });
-
-
-
-
-
-
-
-
-// ✅ Register route
-// REGISTER
- app.post('/register', (req, res) => {
-  const { name, email, password } = req.body;
-  const checkQuery = 'SELECT * FROM users WHERE email = ?';
-  db.query(checkQuery, [email], (err, results) => {
-    if (results.length > 0) return res.status(400).send("User already exists");
-
-    const insertQuery = 'INSERT INTO users (name, email, password, createdAt) VALUES (?, ?, ?, ?)';
-    db.query(insertQuery, [name, email, password, new Date()], (err, result) => {
-      if (err) return res.status(500).send("Registration error");
-      res.send("User registered successfully");
-    });
-  });
-});
-
-// LOGIN
-app.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  const q = 'SELECT * FROM users WHERE email = ?';
-  db.query(q, [email], (err, results) => {
-    if (results.length === 0) return res.status(401).send("Invalid email");
-    if (results[0].password !== password) return res.status(401).send("Invalid password");
-
-    res.json({
-      message: "Login successful",
-      user: {
-        id: results[0].id,
-        name: results[0].name,
-        email: results[0].email
-      }
-    });
-  });
-});
- 
-
-
-
-
-
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-}); 
+});
