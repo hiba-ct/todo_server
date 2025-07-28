@@ -10,13 +10,24 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// ✅ MySQL Connection
+
+//railway connection
 const db = mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT
+});
+
+
+// ✅ MySQL Connection
+/* const db = mysql.createConnection({
   host: 'localhost',
   user: 'root',
   password: 'mysql123@hiba',
   database: 'sys',
-});
+}); */
 
 db.connect((err) => {
   if (!err) {
@@ -102,20 +113,6 @@ app.post('/login', (req, res) => {
 });
 
 
-// ✅ Read tasks for logged-in user
-/* app.get('/read-tasks', verifyToken, (req, res) => {
-  const userId = req.user.id;
-  const q = 'SELECT * FROM todos WHERE user_id = ?';
-
-  db.query(q, [userId], (err, result) => {
-    if (err) {
-      console.log("❌ Failed to read tasks:", err);
-      return res.status(500).send("Error reading tasks");
-    } else {
-      res.json(result);
-    }
-  });
-}); */
 
 // ✅ Add task (logged-in user)
  app.post("/new-task", verifyToken, (req, res) => {
@@ -132,7 +129,7 @@ app.post('/login', (req, res) => {
     return res.json({ message: "✅ Task added", result });
   });
 }); 
-
+// ✅ Read tasks for logged-in user
 app.get('/read-tasks/:id', verifyToken, (req, res) => {
   const requestedId = parseInt(req.params.id);  // from URL like /read-tasks/14
   const userId = req.user.id;                   // from token
